@@ -895,3 +895,43 @@ def test_reset(data_working_copy, cli_runner, geopackage, edit_polygons):
         assert changes is None
         r = cli_runner.invoke(["diff", "--exit-code"])
         assert r.exit_code == 0, r
+
+
+def test_reset_transaction(data_working_copy, cli_runner, geopackage, edit_polygons):
+    with data_working_copy("polygons2") as (repo_path, wc):
+        db = geopackage(wc)
+        with db:
+            cur = db.cursor()
+            edit_polygons(cur)
+
+        r = cli_runner.invoke(["status", "--output-format=json"])
+        assert r.exit_code == 0, r
+        changes = json.loads(r.stdout)["sno.status/v1"]["workingCopy"]["changes"]
+        assert changes == {
+            "nz_waca_adjustments": {
+                "feature": {"inserts": 1, "updates": 2, "deletes": 5}
+            }
+        }
+
+        db = geopackage(wc)
+        with db:
+            cur = db.cursor()
+            cur.execute("ALTER TABLE gpkg_sno_state RENAME TO gpkg_sno_state2;")
+
+        # This should fail and so the entire transaction should be rolled back.
+        # It should not affect the GPKG, even though updating gpkg_sno_state is the last step.
+        with pytest.raises(apsw.SQLError):
+            r = cli_runner.invoke(["reset"])
+
+        with db:
+            cur = db.cursor()
+            cur.execute("ALTER TABLE gpkg_sno_state2 RENAME TO gpkg_sno_state;")
+
+        r = cli_runner.invoke(["status", "--output-format=json"])
+        assert r.exit_code == 0, r
+        changes = json.loads(r.stdout)["sno.status/v1"]["workingCopy"]["changes"]
+        assert changes == {
+            "nz_waca_adjustments": {
+                "feature": {"inserts": 1, "updates": 2, "deletes": 5}
+            }
+        }

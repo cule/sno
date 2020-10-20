@@ -312,8 +312,9 @@ class WorkingCopy_Postgis(WorkingCopy):
             dbcur.execute(SQL("DROP SCHEMA {};").format(Identifier(self.schema)))
 
     def write_meta(self, dataset):
-        self.write_meta_title(dataset)
-        self.write_meta_crs(dataset)
+        with self.session():
+            self.write_meta_title(dataset)
+            self.write_meta_crs(dataset)
 
     def write_meta_title(self, dataset):
         """Write the dataset title as a comment on the table."""
